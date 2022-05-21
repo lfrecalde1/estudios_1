@@ -7,6 +7,12 @@
 #include "eigen3/Eigen/Dense"
 #include <math.h>
 
+// Global variables definition
+double vx_nav= 0.0;
+double vy_nav = 0.0;
+double vz_nav = 0.0;
+double w_nav = 0.0;
+
 
 // init system
 void init_system(ros::Rate toc, int initialitation_time);
@@ -15,9 +21,18 @@ Eigen::MatrixXd jacobian_matrix(Eigen::MatrixXd h, Eigen::MatrixXd L);
 Eigen::MatrixXd func_drone(Eigen::MatrixXd h, Eigen::MatrixXd v, Eigen::MatrixXd L);
 Eigen::MatrixXd system_drone(Eigen::MatrixXd h, Eigen::MatrixXd v, Eigen::MatrixXd L, double ts);
 void send_odometry(Eigen::MatrixXd h, nav_msgs::Odometry message, ros::Publisher odom_publisher);
+Eigen::MatrixXd recive_velocy(Eigen::ArrayXd index);
 
 
 
+void velocityCallback(const geometry_msgs::Twist::ConstPtr& msg)
+{
+  vx_nav = msg->linear.x;
+  vy_nav = msg->linear.y;
+  vz_nav = msg->linear.z;
+  w_nav = msg->angular.z;
+
+}
 
 int main(int argc, char **argv)
 {
@@ -34,6 +49,10 @@ int main(int argc, char **argv)
   ros::Publisher odometry_publisher;
   odometry_publisher = nh.advertise<nav_msgs::Odometry>("Mavic_pro/odom", 10);
 
+  // Subscriber Definition
+  ros::Subscriber control_subscriber;
+  control_subscriber = nh.subscribe("Mavic_pro/cmd_vel", 10, velocityCallback);
+
   // Definition odometry message
   nav_msgs::Odometry odometry_message;
 
@@ -42,7 +61,7 @@ int main(int argc, char **argv)
   init_system(loop_rate, hz);
 
   // vector time definition
-  double final_time = 30;
+  double final_time = 60;
   int number_samples = (final_time+sample_time)/sample_time;
   Eigen::MatrixXd t(1, (int)number_samples);
   t = Eigen::MatrixXd::Zero(1,(int)number_samples);
@@ -51,7 +70,7 @@ int main(int argc, char **argv)
   // Constand values of the robot
   double a, b, c;
   a = 0.1;
-  b = 0.0;
+  b = 0.1;
   c = 0;
   Eigen::MatrixXd L(3,1);
   L(0, 0) = a;
@@ -63,7 +82,7 @@ int main(int argc, char **argv)
   x = 0.0;
   y = 0.0;
   z = 0.0;
-  psi = 90*((M_PI)/180);
+  psi = 0*((M_PI)/180);
 
   // Forward kinematics
   x = x + a*cos(psi) - b*sin(psi);
@@ -98,6 +117,10 @@ int main(int argc, char **argv)
   // Send Initial values
   send_odometry(h(index, k), odometry_message, odometry_publisher);
 
+  // recive Values navigation
+  ros::spinOnce();
+  u_c(index, 0) = recive_velocy(index);
+
 
 
   while (ros::ok())
@@ -105,22 +128,17 @@ int main(int argc, char **argv)
     // Time verification break
     tic = ros::Time::now().toSec();
 
-
     // Control loop
-
-    u_c(index, k) << 0.1,
-                     0.1,
-                     1,
-                     0;
+    ros::spinOnce();
+    u_c(index, k) = recive_velocy(index);
+    std::cout << u_c(index,k) << std::endl;
+    std::cout << "---------------" << std::endl;
 
     // Update values of the system
     h(index, k+1) = system_drone(h(index, k), u_c(index,k), L, sample_time);
 
     //send values odometry
     send_odometry(h(index, k+1), odometry_message, odometry_publisher);
-    std::cout << h(index,k+1) << std::endl;
-    std::cout << "-------------------------" << std::endl;
-
 
     // Time restriction similiat to tic toc matlab
     loop_rate.sleep();
@@ -257,4 +275,16 @@ void send_odometry(Eigen::MatrixXd h, nav_msgs::Odometry message, ros::Publisher
   message.pose.pose.position.z = h(2,0);
   message.pose.pose.orientation.z = h(3,0);
   odom_publisher.publish(message);
+}
+
+Eigen::MatrixXd recive_velocy(Eigen::ArrayXd index)
+{
+  // Auxiliar vector
+  Eigen::MatrixXd vc(4,1);
+
+  vc(index,0) << vx_nav,
+                 vy_nav,
+                 vz_nav,
+                 w_nav;
+  return vc;
 }
