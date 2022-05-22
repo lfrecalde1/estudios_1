@@ -121,6 +121,12 @@ int main(int argc, char **argv)
   ros::spinOnce();
   u_c(index, 0) = recive_velocy(index);
 
+  Eigen::MatrixXd A(1000,1000);
+  Eigen::MatrixXd A_1(1000,1000);
+  A = Eigen::MatrixXd::Random(1000,1000);
+
+
+
 
 
   while (ros::ok())
@@ -131,8 +137,8 @@ int main(int argc, char **argv)
     // Control loop
     ros::spinOnce();
     u_c(index, k) = recive_velocy(index);
-    std::cout << u_c(index,k) << std::endl;
-    std::cout << "---------------" << std::endl;
+    //std::cout << u_c(index,k) << std::endl;
+    //std::cout << "---------------" << std::endl;
 
     // Update values of the system
     h(index, k+1) = system_drone(h(index, k), u_c(index,k), L, sample_time);
@@ -141,11 +147,13 @@ int main(int argc, char **argv)
     send_odometry(h(index, k+1), odometry_message, odometry_publisher);
 
     // Time restriction similiat to tic toc matlab
-    loop_rate.sleep();
+    A_1 = A.inverse();
+    std::cout << delta << std::endl;
     toc = ros::Time::now().toSec();
     delta = toc-tic;
     t_k = t_k+delta;
 
+    loop_rate.sleep();
 
     // update index position
     k = k+1;
